@@ -37,6 +37,3 @@ codegen-units = 1
 # Jalankan wasm-opt dengan fitur yang diperlukan oleh modul WASM kamu
 wasm-opt = ["-O", "--enable-bulk-memory", "--enable-nontrapping-float-to-int"]
 
-serde = { version = "1", features = ["derive"] }
-serde_yaml = "0.9"
-
