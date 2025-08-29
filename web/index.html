@@ -1,271 +1,82 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Nautica · Proxy Board</title>
-
-  <!-- Tailwind + daisyUI -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.24/dist/full.min.css" rel="stylesheet" />
-
-  <!-- Flag icons -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flag-icons/6.7.0/css/flag-icons.min.css" />
-
-  <style>
-    .card-proxy{ min-height: 220px }
-    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-  </style>
-</head>
-<body class="bg-base-200 text-base-content">
-
-  <!-- Top bar -->
-  <div class="navbar bg-base-300 sticky top-0 z-50 px-4">
-    <div class="flex-1">
-      <a class="btn btn-ghost text-xl" href="/">Nautica</a>
-    </div>
-    <div class="flex-none gap-2">
-      <a class="btn btn-outline" href="/sub">Subscription</a>
-      <button id="btnLinks" class="btn">/link</button>
-      <span id="status" class="badge badge-ghost">idle</span>
-    </div>
-  </div>
-
-  <main class="max-w-7xl mx-auto p-4 space-y-6">
-
-    <!-- Info bar -->
-    <div class="alert alert-warning shadow">
-      <div>
-        <span>This service <b>doesn't support SNI bug</b> & <b>doesn't support UDP</b>. For best experience use <b>Clash</b> or <b>SingBox</b>.</span>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MyWebsite</title>
+    <!-- Tailwind + DaisyUI CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.24/dist/full.min.css" rel="stylesheet" type="text/css" />
+  </head>
+  <body class="bg-base-100 text-base-content">
+    <!-- Navbar -->
+    <div class="navbar bg-base-200 px-6 fixed">
+      <div class="flex-1">
+        <a class="btn btn-ghost text-xl">MyWebsite</a>
+      </div>
+      <div class="flex-none">
+        <ul class="menu menu-horizontal px-1">
+          <li><a href="#hero">Home</a></li>
+          <li><a href="#features">Features</a></li>
+          <li><a href="#contact">Contact</a></li>
+        </ul>
       </div>
     </div>
 
-    <!-- Manual add (fallback) -->
-    <section class="card bg-base-100 shadow">
-      <div class="card-body">
-        <h2 class="card-title">Add Proxy (fallback)</h2>
-        <textarea id="manual" class="textarea textarea-bordered w-full h-24" placeholder="IP:PORT per baris, contoh:&#10;193.123.81.105:443&#10;176.97.66.175:443"></textarea>
-        <div class="flex gap-2">
-          <button id="btnUseManual" class="btn btn-primary">Use manual list</button>
-          <button id="btnReload" class="btn">Reload from /api/proxies</button>
+    <!-- Hero Section -->
+    <section id="hero" class="hero min-h-screen bg-base-100">
+      <div class="hero-content text-center">
+        <div class="max-w-md">
+          <h1 class="text-5xl font-bold">Welcome to MyWebsite</h1>
+          <p class="py-6">Build beautiful websites effortlessly using Tailwind and DaisyUI.</p>
+          <a href="#features" class="btn btn-primary">Get Started</a>
         </div>
       </div>
     </section>
 
-    <!-- Grid + pager -->
-    <section class="card bg-base-100 shadow">
-      <div class="card-body">
-        <div class="flex justify-between items-center">
-          <h2 class="card-title">Proxy Database</h2>
-          <div class="join">
-            <input id="search" class="input input-bordered join-item" placeholder="Search ISP / country / IP…" />
-            <button id="btnPrev" class="btn join-item">Prev</button>
-            <button id="btnNext" class="btn join-item">Next</button>
+    <!-- Features Section -->
+    <section id="features" class="py-16 bg-base-200">
+      <div class="max-w-6xl mx-auto px-6">
+        <h2 class="text-3xl font-bold text-center mb-10">Features</h2>
+        <div class="grid md:grid-cols-3 gap-6">
+          <div class="card bg-base-100 shadow-xl">
+            <div class="card-body">
+              <h3 class="card-title">Fast Development</h3>
+              <p>Rapidly build and customize your UI with Tailwind CSS utility classes.</p>
+            </div>
+          </div>
+          <div class="card bg-base-100 shadow-xl">
+            <div class="card-body">
+              <h3 class="card-title">Beautiful UI</h3>
+              <p>DaisyUI components come styled and ready to use — just plug and play.</p>
+            </div>
+          </div>
+          <div class="card bg-base-100 shadow-xl">
+            <div class="card-body">
+              <h3 class="card-title">Fully Responsive</h3>
+              <p>Designed with mobile-first responsiveness in mind for all devices.</p>
+            </div>
           </div>
         </div>
-
-        <div id="grid" class="grid gap-4 mt-4 md:grid-cols-2 lg:grid-cols-3"></div>
-        <div class="text-center opacity-60 mt-2"><span id="pagerInfo">0–0 / 0</span></div>
       </div>
     </section>
-  </main>
 
-  <!-- Modal Links -->
-  <dialog id="modal" class="modal">
-    <div class="modal-box">
-      <h3 class="font-bold text-lg mb-2">/link</h3>
-      <textarea id="linksBox" class="textarea textarea-bordered w-full h-40 mono" readonly></textarea>
-      <div class="modal-action">
-        <button id="copyLinks" class="btn">Copy</button>
-        <form method="dialog"><button class="btn btn-primary">Close</button></form>
-      </div>
-    </div>
-  </dialog>
-
-  <footer class="footer footer-center p-6 bg-base-300">
-    <aside>© 2025 Nautica</aside>
-  </footer>
-
-  <script>
-    const statusEl = document.getElementById('status');
-    const grid = document.getElementById('grid');
-    const pagerInfo = document.getElementById('pagerInfo');
-    const search = document.getElementById('search');
-
-    let all = [];        // [{ip,port,countryCode,isp,latency}]
-    let page = 0;
-    const PAGE_SIZE = 9;
-
-    function setStatus(s){ statusEl.textContent = s; }
-
-    // --- Fetch /link and show modal ---
-    document.getElementById('btnLinks').onclick = async () => {
-      setStatus('loading /link…');
-      try{
-        const res = await fetch('/link');
-        const text = await res.text();
-        document.getElementById('linksBox').value = text.trim();
-        document.getElementById('modal').showModal();
-        setStatus('ok');
-      }catch(e){ setStatus('error'); alert('Failed to load /link'); }
-    };
-    document.getElementById('copyLinks').onclick = async () => {
-      const t = document.getElementById('linksBox').value;
-      if(t) await navigator.clipboard.writeText(t);
-    };
-
-    // --- Load list from /api/proxies (if ada) ---
-    async function loadFromApi(){
-      try{
-        const res = await fetch('/api/proxies', {cache:'no-store'});
-        if(!res.ok) throw new Error(res.status);
-        const json = await res.json();
-        const arr = (json.items||[]).map(s => (''+s).trim()).filter(Boolean);
-        if(!arr.length) throw new Error('empty');
-        return arr;
-      }catch(_){
-        return null; // biar fallback ke manual
-      }
-    }
-
-    // --- Enrich each IP with geo/ISP (ipapi.co) ---
-    // Docs: https://ipapi.co/api/
-    async function enrich(ip){
-      try{
-        const r = await fetch(`https://ipapi.co/${ip}/json/`, {mode:'cors'});
-        const j = await r.json();
-        return {
-          countryCode: (j.country || '').toLowerCase(),
-          isp: j.org || j.asn || 'Unknown'
-        };
-      }catch(_){
-        return { countryCode: '', isp: 'Checking…' };
-      }
-    }
-
-    function normLine(line){
-      const m = line.match(/^([^:\s]+):(\d{2,5})$/);
-      return m ? { ip:m[1], port:+m[2] } : null;
-    }
-
-    async function prepare(list){
-      setStatus('checking…');
-      // unique + valid
-      const uniq = Array.from(new Set(list)).map(normLine).filter(Boolean);
-      // enrich concurrently (batasi concurrency ringan)
-      const out = [];
-      const pool = 10;
-      let i = 0;
-      async function worker(){
-        while(i < uniq.length){
-          const idx = i++;
-          const base = uniq[idx];
-          const ext = await enrich(base.ip);
-          out[idx] = { ...base, ...ext, latency: null };
-        }
-      }
-      await Promise.all(Array.from({length: pool}, worker));
-      setStatus('ok');
-      return out;
-    }
-
-    function filtered(){
-      const q = (search.value||'').toLowerCase();
-      if(!q) return all;
-      return all.filter(o =>
-        [o.ip, o.port, o.isp, o.countryCode].join(' ').toLowerCase().includes(q)
-      );
-    }
-
-    function render(){
-      const data = filtered();
-      const total = data.length;
-      const start = page * PAGE_SIZE;
-      const end = Math.min(start + PAGE_SIZE, total);
-      pagerInfo.textContent = `${total?start+1:0}–${end} / ${total}`;
-
-      const slice = data.slice(start, end);
-      grid.innerHTML = slice.map((o, idx) => cardHTML(o, start + idx + 1)).join('') || `
-        <div class="text-center opacity-60 w-full py-10">No data</div>`;
-    }
-
-    function cardHTML(o, n){
-      const flag = o.countryCode ? `<span class="fi fi-${o.countryCode} mr-2"></span>` : '';
-      const title = o.isp || 'Checking…';
-      return `
-      <div class="card card-proxy bg-base-200 shadow">
-        <div class="card-body">
-          <div class="flex items-center mb-2">${flag}<span class="badge">Checking…</span></div>
-          <div class="border border-warning rounded p-3 mb-3">
-            <div class="font-semibold">${title}</div>
-            <div class="text-sm mono">IP: ${o.ip}</div>
-            <div class="text-sm mono">Port: ${o.port}</div>
-          </div>
-
-          <div class="grid grid-cols-3 gap-2">
-            ${actionBtn('TROJAN TLS',   () => copyProto('trojan', true))}
-            ${actionBtn('VLESS TLS',    () => copyProto('vless', true))}
-            ${actionBtn('SS TLS',       () => copyProto('ss', true))}
-            ${actionBtn('TROJAN NTLS',  () => copyProto('trojan', false))}
-            ${actionBtn('VLESS NTLS',   () => copyProto('vless', false))}
-            ${actionBtn('SS NTLS',      () => copyProto('ss', false))}
-          </div>
-
-          <div class="mt-2">
-            <button class="btn btn-sm" onclick="openWS('${o.ip}-${o.port}')">Open WS</button>
-          </div>
+    <!-- Footer -->
+    <footer class="footer p-10 bg-base-300 text-base-content">
+      <aside>
+        <p>MyWebsite © 2025 - All rights reserved</p>
+      </aside>
+      <nav>
+        <h6 class="footer-title">Social</h6>
+        <div class="grid grid-flow-col gap-4">
+          <a href="#"
+            ><svg xmlns="http://www.w3.org/2000/svg" class="fill-current w-6 h-6" viewBox="0 0 24 24">
+              <path
+                d="M24 4.5a9.9 9.9 0 0 1-2.8.8 5 5 0 0 0 2.2-2.7 9.8 9.8 0 0 1-3.1 1.2 4.9 4.9 0 0 0-8.5 4.5A13.9 13.9 0 0 1 1.6 3.2a4.9 4.9 0 0 0 1.5 6.5A4.8 4.8 0 0 1 .9 9v.1a4.9 4.9 0 0 0 3.9 4.8 5 5 0 0 1-2.2.1 4.9 4.9 0 0 0 4.6 3.4 9.8 9.8 0 0 1-6.1 2.1A10 10 0 0 1 0 20a13.9 13.9 0 0 0 7.5 2.2c9 0 13.9-7.5 13.9-14v-.6A10 10 0 0 0 24 4.5z"
+              /></svg
+          ></a>
         </div>
-      </div>`;
-    }
-
-    function actionBtn(label, fn){
-      const id = 'b' + Math.random().toString(36).slice(2);
-      // kita generate tombol yang memanggil window._actions[id]()
-      window._actions = window._actions || {};
-      window._actions[id] = fn;
-      return `<button class="btn btn-outline btn-xs" onclick="_actions['${id}']()">${label}</button>`;
-    }
-
-    // contoh generator link sederhana (silakan sesuaikan format finalmu)
-    function copyProto(kind, tls){
-      const host = location.host;
-      // kamu bisa fetch('/link') jika butuh UUID dari server; di sini contoh stub:
-      const demo = `${kind.toUpperCase()} ${tls ? 'TLS' : 'NTLS'} @ ${host}`;
-      navigator.clipboard.writeText(demo);
-    }
-
-    function openWS(path){
-      const url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/' + encodeURIComponent(path);
-      const ws = new WebSocket(url);
-      ws.onopen  = () => console.log('WS open', url);
-      ws.onclose = () => console.log('WS close');
-      ws.onerror = (e) => console.log('WS error', e);
-      ws.onmessage = (m) => console.log('WS message', (''+m.data).slice(0,200));
-    }
-
-    // pager & search
-    document.getElementById('btnPrev').onclick = () => { page = Math.max(0, page-1); render(); };
-    document.getElementById('btnNext').onclick = () => { page = page+1; render(); };
-    search.addEventListener('input', () => { page = 0; render(); });
-
-    document.getElementById('btnReload').onclick = init;
-    document.getElementById('btnUseManual').onclick = async () => {
-      const lines = document.getElementById('manual').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-      all = await prepare(lines);
-      page = 0; render();
-    };
-
-    async function init(){
-      setStatus('loading…');
-      let list = await loadFromApi();
-      if(!list || !list.length){
-        setStatus('no /api/proxies, use manual');
-        render(); return;
-      }
-      all = await prepare(list);
-      page = 0; render();
-    }
-    init();
-  </script>
-</body>
+      </nav>
+    </footer>
+  </body>
 </html>
