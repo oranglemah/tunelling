@@ -1,6 +1,20 @@
-use serde::Serialize; // ⬅️ tambahkan import ini
+mod common;
+mod config;
+mod proxy;
 
-// … kode & imports kamu yang lain …
+use crate::config::Config;
+use crate::proxy::*;
+
+use std::collections::HashMap;
+use base64::{engine::general_purpose::URL_SAFE, Engine as _};
+use serde_json::json;
+use uuid::Uuid;
+use worker::*;
+use once_cell::sync::Lazy;
+use regex::Regex;
+
+static PROXYIP_PATTERN: Lazy<Regex> = Lazy::new(|| Regex::new(r"^.+-\d+$").unwrap());
+static PROXYKV_PATTERN: Lazy<Regex> = Lazy::new(|| Regex::new(r"^([A-Z]{2})").unwrap());
 
 #[event(fetch)]
 async fn main(req: Request, env: Env, _: Context) -> Result<Response> {
@@ -8,143 +22,118 @@ async fn main(req: Request, env: Env, _: Context) -> Result<Response> {
         .var("UUID")
         .map(|x| Uuid::parse_str(&x.to_string()).unwrap_or_default())?;
     let host = req.url()?.host().map(|x| x.to_string()).unwrap_or_default();
-    let main_page_url = env.var("MAIN_PAGE_URL").map(|x| x.to_string()).unwrap();
-    let sub_page_url = env.var("SUB_PAGE_URL").map(|x| x.to_string()).unwrap();
+    let main_page_url = env.var("MAIN_PAGE_URL").map(|x|x.to_string()).unwrap();
+    let sub_page_url = env.var("SUB_PAGE_URL").map(|x|x.to_string()).unwrap();
     let config = Config { uuid, host: host.clone(), proxy_addr: host, proxy_port: 443, main_page_url, sub_page_url };
 
     Router::with_data(config)
         .on_async("/", fe)
         .on_async("/sub", sub)
         .on("/link", link)
-        // ⬇️ tambahkan ini, letakkan sebelum wildcard:
-        .on_async("/api/vless", api_vless)
-        // wildcard paling akhir:
         .on_async("/:proxyip", tunnel)
         .run(req, env)
         .await
 }
 
-// ===== util fetch HTML (tetap) =====
 async fn get_response_from_url(url: String) -> Result<Response> {
     let req = Fetch::Url(Url::parse(url.as_str())?);
     let mut res = req.send().await?;
     Response::from_html(res.text().await?)
 }
 
-// ===== FE & SUB (tetap) =====
 async fn fe(_: Request, cx: RouteContext<Config>) -> Result<Response> {
     get_response_from_url(cx.data.main_page_url).await
 }
+
 async fn sub(_: Request, cx: RouteContext<Config>) -> Result<Response> {
     get_response_from_url(cx.data.sub_page_url).await
 }
 
-// ===== YAML structs untuk Clash Provider =====
-#[derive(Serialize)]
-struct WsOpts {
-    headers: std::collections::HashMap<String, String>,
-    #[serde(rename = "path")]
-    path: String,
-}
 
-#[derive(Serialize)]
-struct YamlProxy<'a> {
-    name: String,
-    network: &'a str,                 // "ws"
-    port: String,                     // "443"
-    server: String,                   // subdomain (bug)
-    servername: String,               // subdomain.domain
-    tls: bool,
-    #[serde(rename = "type")]
-    typ: &'a str,                     // "vless"
-    #[serde(rename = "packet-encoding")]
-    packet_encoding: &'a str,         // "packetaddr"
-    uuid: String,
-    #[serde(rename = "ws-opts")]
-    ws_opts: WsOpts,
-}
-
-#[derive(Serialize)]
-struct ProviderOut<'a> {
-    proxies: Vec<YamlProxy<'a>>,
-}
-
-// ===== handler: GET /api/vless =====
-async fn api_vless(req: Request, cx: RouteContext<Config>) -> Result<Response> {
-    let url = req.url()?;
-    let params = url.search_params();
-
-    // ambil param dgn default
-    let cc = params.get("cc").unwrap_or("jp".into()).to_uppercase();
-    let tls = params.get("tls").unwrap_or("true".into()) == "true";
-    let _cdn = params.get("cdn").unwrap_or("true".into()) == "true";
-    let limit: usize = params.get("limit").unwrap_or("10".into()).parse().unwrap_or(10);
-    let format = params.get("format").unwrap_or("clash-provider".into());
-    let domain = params.get("domain").unwrap_or(cx.data.host.clone());
-    let subdomain = params.get("subdomain").unwrap_or("ava.game.naver.com".into());
-    let bug = params.get("bug").unwrap_or(subdomain.clone());
-
-    if format != "clash-provider" {
-        return Response::error("unsupported format", 400);
-    }
-
-    // Ambil list IP:PORT dari KV, sama pola dgn tunnel()
-    let kv = cx.kv("SIREN")?;
-    let mut proxy_kv_str = kv.get("proxy_kv").text().await?.unwrap_or_default();
-    if proxy_kv_str.is_empty() {
-        let req = Fetch::Url(Url::parse("https://raw.githubusercontent.com/FoolVPN-ID/Nautica/refs/heads/main/kvProxyList.json")?);
-        let mut res = req.send().await?;
-        if res.status_code() == 200 {
-            proxy_kv_str = res.text().await?.to_string();
-            kv.put("proxy_kv", &proxy_kv_str)?.expiration_ttl(60 * 60 * 24).execute().await?;
-        } else {
-            return Response::error("cannot load proxy_kv", 502);
+async fn tunnel(req: Request, mut cx: RouteContext<Config>) -> Result<Response> {
+    let mut proxyip = cx.param("proxyip").unwrap().to_string();
+    if PROXYKV_PATTERN.is_match(&proxyip)  {
+        let kvid_list: Vec<String> = proxyip.split(",").map(|s|s.to_string()).collect();
+        let kv = cx.kv("SIREN")?;
+        let mut proxy_kv_str = kv.get("proxy_kv").text().await?.unwrap_or("".to_string());
+        let mut rand_buf = [0u8, 1];
+        getrandom::getrandom(&mut rand_buf).expect("failed generating random number");
+        
+        if proxy_kv_str.len() == 0 {
+            console_log!("getting proxy kv from github...");
+            let req = Fetch::Url(Url::parse("https://raw.githubusercontent.com/FoolVPN-ID/Nautica/refs/heads/main/kvProxyList.json")?);
+            let mut res = req.send().await?;
+            if res.status_code() == 200 {
+                proxy_kv_str = res.text().await?.to_string();
+                kv.put("proxy_kv", &proxy_kv_str)?.expiration_ttl(60 * 60 * 24).execute().await?; // 24 hours
+            } else {
+                return Err(Error::from(format!("error getting proxy kv: {}", res.status_code())));
+            }
         }
+        
+        let proxy_kv: HashMap<String, Vec<String>> = serde_json::from_str(&proxy_kv_str)?;
+        
+        // select random KV ID
+        let kv_index = (rand_buf[0] as usize) % kvid_list.len();
+        proxyip = kvid_list[kv_index].clone();
+        
+        // select random proxy ip
+        let proxyip_index = (rand_buf[0] as usize) % proxy_kv[&proxyip].len();
+        proxyip = proxy_kv[&proxyip][proxyip_index].clone().replace(":", "-");
     }
-    let proxy_kv: HashMap<String, Vec<String>> = serde_json::from_str(&proxy_kv_str)?;
-    let ips = proxy_kv.get(&cc).cloned().unwrap_or_default();
-    if ips.is_empty() {
-        return Response::error("no proxies for cc", 404);
-    }
 
-    // nama & flag
-    let flag = match cc.as_str() { "JP" => "🇯🇵", "KR" => "🇰🇷", "US" => "🇺🇸", "SG" => "🇸🇬", _ => "🏳️" };
-    let server = subdomain.clone();
-    let servername = format!("{}.{}", subdomain, domain);
-
-    // header default (boleh kamu acak/ubah)
-    let mut headers = std::collections::HashMap::new();
-    headers.insert("Host".to_string(), format!("{}.{}", bug, domain));
-    headers.insert("User-Agent".to_string(), "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36".to_string());
-
-    // bentuk daftar proxies
-    let mut out_list = Vec::new();
-    for (i, ipport) in ips.into_iter().take(limit).enumerate() {
-        let (ip, port) = ipport.split_once(':').map(|(a,b)|(a.to_string(), b.to_string())).unwrap_or((ipport.clone(), "443".to_string()));
-        let name = format!("{} {} {} CDN {}", i+1, flag, cc, if tls { "TLS" } else { "NTLS" });
-
-        out_list.push(YamlProxy {
-            name,
-            network: "ws",
-            port: "443".into(),       // port ke CDN/bug (WSS)
-            server: server.clone(),
-            servername: format!("{}.{}", bug, domain),
-            tls,
-            typ: "vless",
-            packet_encoding: "packetaddr",
-            uuid: cx.data.uuid.to_string(),
-            ws_opts: WsOpts {
-                headers: headers.clone(),
-                path: format!("/free/{}:{}", ip, port),  // path sesuai contohmu
-            },
+    let upgrade = req.headers().get("Upgrade")?.unwrap_or_default();
+    if upgrade == "websocket".to_string() && PROXYIP_PATTERN.is_match(&proxyip) {
+        if let Some((addr, port_str)) = proxyip.split_once('-') {
+            if let Ok(port) = port_str.parse() {
+                cx.data.proxy_addr = addr.to_string();
+                cx.data.proxy_port = port;
+            }
+        }
+        
+        let WebSocketPair { server, client } = WebSocketPair::new()?;
+        server.accept()?;
+    
+        wasm_bindgen_futures::spawn_local(async move {
+            let events = server.events().unwrap();
+            if let Err(e) = ProxyStream::new(cx.data, &server, events).process().await {
+                console_error!("[tunnel]: {}", e);
+            }
         });
+    
+        Response::from_websocket(client)
+    } else {
+        Response::from_html("hi from wasm!")
     }
 
-    // serialize YAML
-    let body = serde_yaml::to_string(&ProviderOut { proxies: out_list })
-        .unwrap_or_else(|_| "proxies: []\n".to_string());
+}
 
-    let mut res = Response::ok(body)?;
-    res.headers_mut().set("content-type", "application/x-yaml; charset=utf-8").ok();
-    Ok(res)
+fn link(_: Request, cx: RouteContext<Config>) -> Result<Response> {
+    let host = cx.data.host.to_string();
+    let uuid = cx.data.uuid.to_string();
+
+    let vmess_link = {
+        let config = json!({
+            "ps": "siren vmess",
+            "v": "2",
+            "add": host,
+            "port": "80",
+            "id": uuid,
+            "aid": "0",
+            "scy": "zero",
+            "net": "ws",
+            "type": "none",
+            "host": host,
+            "path": "/KR",
+            "tls": "",
+            "sni": "",
+            "alpn": ""}
+        );
+        format!("vmess://{}", URL_SAFE.encode(config.to_string()))
+    };
+    let vless_link = format!("vless://{uuid}@{host}:443?encryption=none&type=ws&host={host}&path=%2FKR&security=tls&sni={host}#siren vless");
+    let trojan_link = format!("trojan://{uuid}@{host}:443?encryption=none&type=ws&host={host}&path=%2FKR&security=tls&sni={host}#siren trojan");
+    let ss_link = format!("ss://{}@{host}:443?plugin=v2ray-plugin%3Btls%3Bmux%3D0%3Bmode%3Dwebsocket%3Bpath%3D%2FKR%3Bhost%3D{host}#siren ss", URL_SAFE.encode(format!("none:{uuid}")));
+    
+    Response::from_body(ResponseBody::Body(format!("{vmess_link}\n{vless_link}\n{trojan_link}\n{ss_link}").into()))
 }
