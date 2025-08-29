@@ -91,8 +91,8 @@ struct ProviderOut<'a> {
 }
 
 // helper: ambil query param dengan default
-fn q<'a>(p: &'a web_sys::UrlSearchParams, k: &str, d: &'a str) -> String {
-    p.get(k).unwrap_or_else(|| d.to_string())
+fn q<'a>(p: &'a web_sys::UrlSearchParams, k: &str, d: &'a str) -> String
+
 }
 
 async fn api_vless(req: Request, cx: RouteContext<Config>) -> Result<Response> {
