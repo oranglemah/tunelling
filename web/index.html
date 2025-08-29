@@ -3,133 +3,269 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Siren Dashboard</title>
+  <title>Nautica · Proxy Board</title>
+
+  <!-- Tailwind + daisyUI -->
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.24/dist/full.min.css" rel="stylesheet" />
+
+  <!-- Flag icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flag-icons/6.7.0/css/flag-icons.min.css" />
+
+  <style>
+    .card-proxy{ min-height: 220px }
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  </style>
 </head>
 <body class="bg-base-200 text-base-content">
-  <div class="navbar bg-base-300 px-4 sticky top-0 z-50">
-    <div class="flex-1"><span class="btn btn-ghost text-xl">Siren</span></div>
+
+  <!-- Top bar -->
+  <div class="navbar bg-base-300 sticky top-0 z-50 px-4">
+    <div class="flex-1">
+      <a class="btn btn-ghost text-xl" href="/">Nautica</a>
+    </div>
     <div class="flex-none gap-2">
-      <a id="subBtn" class="btn btn-outline" href="/sub">Open /sub</a>
+      <a class="btn btn-outline" href="/sub">Subscription</a>
+      <button id="btnLinks" class="btn">/link</button>
       <span id="status" class="badge badge-ghost">idle</span>
     </div>
   </div>
 
-  <main class="max-w-5xl mx-auto p-4 space-y-6">
-    <!-- Get Links -->
+  <main class="max-w-7xl mx-auto p-4 space-y-6">
+
+    <!-- Info bar -->
+    <div class="alert alert-warning shadow">
+      <div>
+        <span>This service <b>doesn't support SNI bug</b> & <b>doesn't support UDP</b>. For best experience use <b>Clash</b> or <b>SingBox</b>.</span>
+      </div>
+    </div>
+
+    <!-- Manual add (fallback) -->
     <section class="card bg-base-100 shadow">
       <div class="card-body">
-        <h2 class="card-title">Client Links</h2>
+        <h2 class="card-title">Add Proxy (fallback)</h2>
+        <textarea id="manual" class="textarea textarea-bordered w-full h-24" placeholder="IP:PORT per baris, contoh:&#10;193.123.81.105:443&#10;176.97.66.175:443"></textarea>
         <div class="flex gap-2">
-          <button id="getLinks" class="btn btn-primary">Fetch /link</button>
-          <button id="copyLinks" class="btn">Copy</button>
+          <button id="btnUseManual" class="btn btn-primary">Use manual list</button>
+          <button id="btnReload" class="btn">Reload from /api/proxies</button>
         </div>
-        <textarea id="linksBox" class="textarea textarea-bordered w-full h-40 mt-3" readonly></textarea>
-        <p class="text-sm opacity-70">Tombol ini memanggil <code>/link</code> pada Worker dan menampilkan vmess/vless/trojan/ss.</p>
       </div>
     </section>
 
-    <!-- Connect Tunnel (/:proxyip) -->
+    <!-- Grid + pager -->
     <section class="card bg-base-100 shadow">
       <div class="card-body">
-        <h2 class="card-title">Tunnel WebSocket (/:proxyip)</h2>
-
-        <div class="form-control gap-2">
-          <label class="label">
-            <span class="label-text">Masukkan <b>proxyip</b></span>
-            <span class="label-text-alt opacity-70">
-              Contoh: <code>1.2.3.4:8080</code> → otomatis jadi <code>1.2.3.4-8080</code>, atau kode KV: <code>KR</code>, <code>JP</code>, <code>KR,JP</code>
-            </span>
-          </label>
-          <input id="proxyInput" class="input input-bordered" placeholder="KR,JP atau 1.2.3.4:8080" />
-        </div>
-
-        <div class="flex gap-2 pt-2">
-          <button id="connectBtn" class="btn btn-accent">Connect WS</button>
-          <button id="closeBtn" class="btn">Close</button>
-        </div>
-
-        <div class="mt-3">
-          <div class="collapse bg-base-200">
-            <input type="checkbox" />
-            <div class="collapse-title text-md font-medium">Log</div>
-            <div class="collapse-content">
-              <pre id="log" class="whitespace-pre-wrap text-sm"></pre>
-            </div>
+        <div class="flex justify-between items-center">
+          <h2 class="card-title">Proxy Database</h2>
+          <div class="join">
+            <input id="search" class="input input-bordered join-item" placeholder="Search ISP / country / IP…" />
+            <button id="btnPrev" class="btn join-item">Prev</button>
+            <button id="btnNext" class="btn join-item">Next</button>
           </div>
         </div>
 
-        <p class="text-sm opacity-70">
-          Halaman ini akan membuka <code>wss://&lt;host&gt;/&lt;proxyip&gt;</code>.
-          Worker kamu akan mendeteksi header <code>Upgrade: websocket</code> dan menjalankan handler <code>tunnel()</code>.
-        </p>
+        <div id="grid" class="grid gap-4 mt-4 md:grid-cols-2 lg:grid-cols-3"></div>
+        <div class="text-center opacity-60 mt-2"><span id="pagerInfo">0–0 / 0</span></div>
       </div>
     </section>
   </main>
 
+  <!-- Modal Links -->
+  <dialog id="modal" class="modal">
+    <div class="modal-box">
+      <h3 class="font-bold text-lg mb-2">/link</h3>
+      <textarea id="linksBox" class="textarea textarea-bordered w-full h-40 mono" readonly></textarea>
+      <div class="modal-action">
+        <button id="copyLinks" class="btn">Copy</button>
+        <form method="dialog"><button class="btn btn-primary">Close</button></form>
+      </div>
+    </div>
+  </dialog>
+
   <footer class="footer footer-center p-6 bg-base-300">
-    <aside>© 2025 Siren</aside>
+    <aside>© 2025 Nautica</aside>
   </footer>
 
   <script>
     const statusEl = document.getElementById('status');
-    const logEl = document.getElementById('log');
-    let ws = null;
+    const grid = document.getElementById('grid');
+    const pagerInfo = document.getElementById('pagerInfo');
+    const search = document.getElementById('search');
+
+    let all = [];        // [{ip,port,countryCode,isp,latency}]
+    let page = 0;
+    const PAGE_SIZE = 9;
 
     function setStatus(s){ statusEl.textContent = s; }
-    function log(...a){ logEl.textContent += a.join(' ') + "\n"; }
 
-    // --- /link ---
-    document.getElementById('getLinks').onclick = async () => {
+    // --- Fetch /link and show modal ---
+    document.getElementById('btnLinks').onclick = async () => {
       setStatus('loading /link…');
-      try {
+      try{
         const res = await fetch('/link');
         const text = await res.text();
         document.getElementById('linksBox').value = text.trim();
+        document.getElementById('modal').showModal();
         setStatus('ok');
-      } catch (e) {
-        setStatus('error'); log('link error:', e);
-      }
+      }catch(e){ setStatus('error'); alert('Failed to load /link'); }
     };
     document.getElementById('copyLinks').onclick = async () => {
       const t = document.getElementById('linksBox').value;
-      if (!t) return;
-      await navigator.clipboard.writeText(t);
+      if(t) await navigator.clipboard.writeText(t);
     };
 
-    // --- /:proxyip (WebSocket) ---
-    function normalizeProxyPath(s){
-      s = (s || '').trim();
-      // support "ip:port" -> "ip-port" for your tunnel()
-      if (/^[^\s:]+:\d+$/.test(s)) return s.replace(':','-');
-      // support "KR,JP" etc (handled by PROXYKV_PATTERN and KV logic in your worker)
-      return s; 
+    // --- Load list from /api/proxies (if ada) ---
+    async function loadFromApi(){
+      try{
+        const res = await fetch('/api/proxies', {cache:'no-store'});
+        if(!res.ok) throw new Error(res.status);
+        const json = await res.json();
+        const arr = (json.items||[]).map(s => (''+s).trim()).filter(Boolean);
+        if(!arr.length) throw new Error('empty');
+        return arr;
+      }catch(_){
+        return null; // biar fallback ke manual
+      }
     }
 
-    document.getElementById('connectBtn').onclick = () => {
-      const raw = document.getElementById('proxyInput').value;
-      const proxyPath = normalizeProxyPath(raw);
-      if (!proxyPath) return alert('Isi proxyip dulu');
-
-      const url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/' + encodeURIComponent(proxyPath);
-      log('connecting to', url);
-      setStatus('connecting');
-
-      try {
-        ws = new WebSocket(url); // browser will send Upgrade: websocket
-        ws.onopen = () => { setStatus('connected'); log('WS open'); };
-        ws.onclose = (e) => { setStatus('closed'); log('WS close', e.code, e.reason || ''); };
-        ws.onerror = (e) => { setStatus('error'); log('WS error', e.message || e); };
-        ws.onmessage = (msg) => { log('WS message', typeof msg.data, (''+msg.data).slice(0,200)); };
-      } catch (e) {
-        setStatus('error'); log('WS init error', e);
+    // --- Enrich each IP with geo/ISP (ipapi.co) ---
+    // Docs: https://ipapi.co/api/
+    async function enrich(ip){
+      try{
+        const r = await fetch(`https://ipapi.co/${ip}/json/`, {mode:'cors'});
+        const j = await r.json();
+        return {
+          countryCode: (j.country || '').toLowerCase(),
+          isp: j.org || j.asn || 'Unknown'
+        };
+      }catch(_){
+        return { countryCode: '', isp: 'Checking…' };
       }
+    }
+
+    function normLine(line){
+      const m = line.match(/^([^:\s]+):(\d{2,5})$/);
+      return m ? { ip:m[1], port:+m[2] } : null;
+    }
+
+    async function prepare(list){
+      setStatus('checking…');
+      // unique + valid
+      const uniq = Array.from(new Set(list)).map(normLine).filter(Boolean);
+      // enrich concurrently (batasi concurrency ringan)
+      const out = [];
+      const pool = 10;
+      let i = 0;
+      async function worker(){
+        while(i < uniq.length){
+          const idx = i++;
+          const base = uniq[idx];
+          const ext = await enrich(base.ip);
+          out[idx] = { ...base, ...ext, latency: null };
+        }
+      }
+      await Promise.all(Array.from({length: pool}, worker));
+      setStatus('ok');
+      return out;
+    }
+
+    function filtered(){
+      const q = (search.value||'').toLowerCase();
+      if(!q) return all;
+      return all.filter(o =>
+        [o.ip, o.port, o.isp, o.countryCode].join(' ').toLowerCase().includes(q)
+      );
+    }
+
+    function render(){
+      const data = filtered();
+      const total = data.length;
+      const start = page * PAGE_SIZE;
+      const end = Math.min(start + PAGE_SIZE, total);
+      pagerInfo.textContent = `${total?start+1:0}–${end} / ${total}`;
+
+      const slice = data.slice(start, end);
+      grid.innerHTML = slice.map((o, idx) => cardHTML(o, start + idx + 1)).join('') || `
+        <div class="text-center opacity-60 w-full py-10">No data</div>`;
+    }
+
+    function cardHTML(o, n){
+      const flag = o.countryCode ? `<span class="fi fi-${o.countryCode} mr-2"></span>` : '';
+      const title = o.isp || 'Checking…';
+      return `
+      <div class="card card-proxy bg-base-200 shadow">
+        <div class="card-body">
+          <div class="flex items-center mb-2">${flag}<span class="badge">Checking…</span></div>
+          <div class="border border-warning rounded p-3 mb-3">
+            <div class="font-semibold">${title}</div>
+            <div class="text-sm mono">IP: ${o.ip}</div>
+            <div class="text-sm mono">Port: ${o.port}</div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2">
+            ${actionBtn('TROJAN TLS',   () => copyProto('trojan', true))}
+            ${actionBtn('VLESS TLS',    () => copyProto('vless', true))}
+            ${actionBtn('SS TLS',       () => copyProto('ss', true))}
+            ${actionBtn('TROJAN NTLS',  () => copyProto('trojan', false))}
+            ${actionBtn('VLESS NTLS',   () => copyProto('vless', false))}
+            ${actionBtn('SS NTLS',      () => copyProto('ss', false))}
+          </div>
+
+          <div class="mt-2">
+            <button class="btn btn-sm" onclick="openWS('${o.ip}-${o.port}')">Open WS</button>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    function actionBtn(label, fn){
+      const id = 'b' + Math.random().toString(36).slice(2);
+      // kita generate tombol yang memanggil window._actions[id]()
+      window._actions = window._actions || {};
+      window._actions[id] = fn;
+      return `<button class="btn btn-outline btn-xs" onclick="_actions['${id}']()">${label}</button>`;
+    }
+
+    // contoh generator link sederhana (silakan sesuaikan format finalmu)
+    function copyProto(kind, tls){
+      const host = location.host;
+      // kamu bisa fetch('/link') jika butuh UUID dari server; di sini contoh stub:
+      const demo = `${kind.toUpperCase()} ${tls ? 'TLS' : 'NTLS'} @ ${host}`;
+      navigator.clipboard.writeText(demo);
+    }
+
+    function openWS(path){
+      const url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/' + encodeURIComponent(path);
+      const ws = new WebSocket(url);
+      ws.onopen  = () => console.log('WS open', url);
+      ws.onclose = () => console.log('WS close');
+      ws.onerror = (e) => console.log('WS error', e);
+      ws.onmessage = (m) => console.log('WS message', (''+m.data).slice(0,200));
+    }
+
+    // pager & search
+    document.getElementById('btnPrev').onclick = () => { page = Math.max(0, page-1); render(); };
+    document.getElementById('btnNext').onclick = () => { page = page+1; render(); };
+    search.addEventListener('input', () => { page = 0; render(); });
+
+    document.getElementById('btnReload').onclick = init;
+    document.getElementById('btnUseManual').onclick = async () => {
+      const lines = document.getElementById('manual').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+      all = await prepare(lines);
+      page = 0; render();
     };
 
-    document.getElementById('closeBtn').onclick = () => {
-      if (ws && ws.readyState === WebSocket.OPEN) ws.close(1000, 'bye');
-    };
+    async function init(){
+      setStatus('loading…');
+      let list = await loadFromApi();
+      if(!list || !list.length){
+        setStatus('no /api/proxies, use manual');
+        render(); return;
+      }
+      all = await prepare(list);
+      page = 0; render();
+    }
+    init();
   </script>
 </body>
 </html>
